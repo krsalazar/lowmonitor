@@ -12,10 +12,18 @@
 ; (in al, 0x60); para cubrir todo el espacio 0-65535 se usa
 ; el registro DX, que es la forma general en x86-64.
 ;
+; Verificacion de estado (requisito "verificar estados y flags
+; despues de cada operacion"): tras cada lectura IN se evalua el
+; valor devuelto. En el bus de E/S x86, un puerto sin respuesta
+; deja las lineas flotando y se lee 0xFF; por eso se interpreta:
+;   valor != 0xFF  -> el puerto respondio            -> [OK]
+;   valor == 0xFF  -> sin respuesta (bus flotante)   -> [--]
+; Para OUT no hay dato de retorno; su validez queda garantizada
+; por el permiso concedido por ioperm (ya verificado arriba).
+;
 ; Seguridad: la escritura (OUT) se realiza sobre el puerto de
 ; diagnostico POST 0x80, de uso tradicional como "basurero" de
-; E/S en Linux; no controla hardware critico. Las lecturas (IN)
-; se hacen sobre puertos de consulta (teclado/estado y COM1).
+; E/S en Linux; no controla hardware critico.
 ; ==========================================================
 
 extern print_string
@@ -23,18 +31,22 @@ extern print_string
 section .data
     msg_mod2_titulo  db "--- Modulo 2: Monitor de puertos E/S ---", 10, 0
 
-    msg_p60          db "Puerto 60h (teclado): [OK]", 10, 0
-    msg_p61          db "Puerto 61h (panel): [OK]", 10, 0
-    msg_p3f8         db "Puerto 3F8h (COM1): [OK]", 10, 0
+    ; Etiquetas de puerto (sin el estado; el estado se anexa aparte)
+    lbl_p60          db "Puerto 60h (teclado): ", 0
+    lbl_p61          db "Puerto 61h (panel):   ", 0
+    lbl_p3f8         db "Puerto 3F8h (COM1):   ", 0
 
-    ; Demostracion de anchos IN/OUT
     msg_anchos_hdr   db "Anchos de E/S demostrados (direccionamiento por DX):", 10, 0
-    msg_in8          db "  IN  8  bits (in al, dx)  puerto 60h  [OK]", 10, 0
-    msg_in16         db "  IN  16 bits (in ax, dx)  puerto 3F8h [OK]", 10, 0
-    msg_in32         db "  IN  32 bits (in eax, dx) puerto 3F8h [OK]", 10, 0
-    msg_out8         db "  OUT 8  bits (out dx, al)  puerto 80h [OK]", 10, 0
-    msg_out16        db "  OUT 16 bits (out dx, ax)  puerto 80h [OK]", 10, 0
-    msg_out32        db "  OUT 32 bits (out dx, eax) puerto 80h [OK]", 10, 0
+    lbl_in8          db "  IN  8  bits (in al, dx)  puerto 60h  ", 0
+    lbl_in16         db "  IN  16 bits (in ax, dx)  puerto 3F8h ", 0
+    lbl_in32         db "  IN  32 bits (in eax, dx) puerto 3F8h ", 0
+    lbl_out8         db "  OUT 8  bits (out dx, al)  puerto 80h ", 0
+    lbl_out16        db "  OUT 16 bits (out dx, ax)  puerto 80h ", 0
+    lbl_out32        db "  OUT 32 bits (out dx, eax) puerto 80h ", 0
+
+    ; Estados posibles (incluyen salto de linea)
+    estado_ok        db "[OK]", 10, 0      ; puerto respondio / OUT valido
+    estado_sin_resp  db "[--]", 10, 0      ; lectura 0xFF: sin respuesta
 
     ; Mensaje informativo (no es un fallo del programa): el acceso
     ; directo a puertos de E/S de hardware requiere privilegios por
@@ -48,14 +60,31 @@ section .data
 section .text
     global modulo2_ioports
 
+; ----------------------------------------------------------
+; print_estado_lectura
+;   Imprime [OK] si el valor leido != 0xFF, o [--] si == 0xFF.
+;   Entrada: AL = byte menos significativo del valor leido.
+;   Altera : RDI, y lo que altere print_string.
+; ----------------------------------------------------------
+print_estado_lectura:
+    cmp al, 0xFF
+    je .sin_resp
+    mov rdi, estado_ok
+    call print_string
+    ret
+.sin_resp:
+    mov rdi, estado_sin_resp
+    call print_string
+    ret
+
 modulo2_ioports:
     ; Titulo del modulo
     mov rdi, msg_mod2_titulo
     call print_string
 
     ; --- 1. Permisos para el rango de puertos usados ---
-    ; Habilitamos de golpe 0x00..0x3FF (1024 puertos) para cubrir
-    ; teclado (60h/61h/64h), diagnostico POST (80h) y COM1 (3F8h).
+    ; Habilitamos 0x00..0x3FF (1024 puertos) para cubrir teclado
+    ; (60h/61h), diagnostico POST (80h) y COM1 (3F8h).
     mov rax, 173        ; syscall sys_ioperm
     mov rdi, 0          ; puerto base 0
     mov rsi, 0x400      ; 1024 puertos (0x000..0x3FF)
@@ -65,69 +94,85 @@ modulo2_ioports:
     cmp rax, 0
     jl .error_permisos  ; rax < 0 => error (falta de privilegios)
 
-    ; --- 2. Lecturas originales (teclado, panel, COM1) 8 bits ---
+    ; --- 2. Lecturas con verificacion real de estado ---
+    ; Puerto 60h (teclado), 8 bits
+    mov rdi, lbl_p60
+    call print_string
     xor rax, rax
     mov dx, 0x60
-    in al, dx           ; teclado, 8 bits
-    mov rdi, msg_p60
-    call print_string
+    in al, dx
+    call print_estado_lectura   ; evalua AL (0xFF => sin respuesta)
 
+    ; Puerto 61h (panel), 8 bits
+    mov rdi, lbl_p61
+    call print_string
     xor rax, rax
     mov dx, 0x61
-    in al, dx           ; panel de sistema, 8 bits
-    mov rdi, msg_p61
-    call print_string
+    in al, dx
+    call print_estado_lectura
 
+    ; Puerto 3F8h (COM1), 8 bits
+    mov rdi, lbl_p3f8
+    call print_string
     xor rax, rax
     mov dx, 0x3F8
-    in al, dx           ; COM1, 8 bits (direccion > 255 via DX)
-    mov rdi, msg_p3f8
-    call print_string
+    in al, dx
+    call print_estado_lectura
 
     ; --- 3. Demostracion de los tres anchos de IN y OUT ---
     mov rdi, msg_anchos_hdr
     call print_string
 
-    ; IN 8 bits
+    ; IN 8 bits (teclado)
+    mov rdi, lbl_in8
+    call print_string
     xor rax, rax
     mov dx, 0x60
     in al, dx
-    mov rdi, msg_in8
-    call print_string
+    call print_estado_lectura
 
-    ; IN 16 bits (lee 3F8h y 3F9h)
+    ; IN 16 bits (COM1: 3F8h-3F9h). Verificamos AL (byte bajo).
+    mov rdi, lbl_in16
+    call print_string
     xor rax, rax
     mov dx, 0x3F8
     in ax, dx
-    mov rdi, msg_in16
-    call print_string
+    call print_estado_lectura
 
-    ; IN 32 bits (lee 3F8h..3FBh)
+    ; IN 32 bits (COM1: 3F8h-3FBh). Verificamos AL (byte bajo).
+    mov rdi, lbl_in32
+    call print_string
     xor rax, rax
     mov dx, 0x3F8
     in eax, dx
-    mov rdi, msg_in32
-    call print_string
+    call print_estado_lectura
 
-    ; OUT 8 bits al puerto de diagnostico POST (0x80)
+    ; OUT 8 bits al puerto POST 0x80. No hay dato de retorno; su
+    ; validez la garantiza el permiso ya concedido por ioperm.
+    mov rdi, lbl_out8
+    call print_string
     mov dx, 0x80
     mov al, 0x00
     out dx, al
-    mov rdi, msg_out8
+    mov rdi, estado_ok
     call print_string
 
     ; OUT 16 bits
+    mov rdi, lbl_out16
+    call print_string
     mov dx, 0x80
     mov ax, 0x0000
     out dx, ax
-    mov rdi, msg_out16
+    mov rdi, estado_ok
     call print_string
 
     ; OUT 32 bits
+    mov rdi, lbl_out32
+    call print_string
     mov dx, 0x80
     mov eax, 0x00000000
     out dx, eax
-    mov rdi, msg_out32
+    mov rdi, estado_ok
     call print_string
 
     mov rdi, msg_salto_m2
