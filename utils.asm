@@ -45,51 +45,49 @@ print_string:
 ; ----------------------------------------------------------
 ; print_uint: imprime un entero de 64 bits SIN signo en decimal.
 ;   Entrada: RDI = valor a imprimir
-;   Metodo : division sucesiva por 10; los restos son los
-;            digitos en orden inverso, se apilan y luego se
-;            emiten en orden correcto.
-;   Altera : RAX, RBX, RCX, RDX, RSI, RDI (clobbers de syscall)
-;   Usa la pila como buffer temporal de digitos.
+;   Metodo : se extraen los digitos por division sucesiva entre
+;            10 y se escriben de atras hacia adelante en un buffer
+;            fijo; al final se emiten con UN solo write.
+;   Importante: NO se hace ningun syscall dentro del bucle de
+;   extraccion, porque la instruccion syscall destruye RCX y R11;
+;   todo el syscall write ocurre una sola vez al final.
+;   Altera : RAX, RCX, RDX, RSI, RDI, R8, R9 (clobbers de syscall)
 ; ----------------------------------------------------------
 print_uint:
-    mov rax, rdi        ; RAX = valor
-    mov rbx, 10         ; divisor
-    xor rcx, rcx        ; RCX = contador de digitos apilados
+    mov rax, rdi            ; RAX = valor
+    mov r9, 10              ; divisor
+    ; RSI apunta al final del buffer y se decrementa antes de cada
+    ; escritura, dejando los digitos en orden correcto.
+    lea rsi, [uint_buf + 20]
 
-    ; Caso especial: valor == 0 -> imprimir '0'
+    ; Caso especial: valor == 0
     test rax, rax
     jnz .extraer
-    push '0'
-    inc rcx
+    dec rsi
+    mov byte [rsi], '0'
     jmp .emitir
 
 .extraer:
-    ; Mientras RAX != 0: dividir por 10, apilar (resto + '0')
-    xor rdx, rdx        ; limpiar RDX antes de DIV (dividendo de 128 bits)
-    div rbx             ; RAX = cociente, RDX = resto (0..9)
-    add dl, '0'         ; convertir resto a caracter ASCII
-    movzx rdx, dl
-    push rdx            ; apilar el caracter (8 bytes)
-    inc rcx
+    ; Mientras RAX != 0: dividir por 10; el resto es un digito.
+.loop_div:
+    xor rdx, rdx            ; limpiar RDX antes de DIV de 128 bits
+    div r9                  ; RAX = cociente, RDX = resto (0..9)
+    add dl, '0'             ; resto -> ASCII
+    dec rsi                 ; retroceder una posicion en el buffer
+    mov [rsi], dl           ; escribir el digito
     test rax, rax
-    jnz .extraer
+    jnz .loop_div
 
 .emitir:
-    ; Desapilar e imprimir cada digito en orden correcto.
-.loop_emitir:
-    test rcx, rcx
-    jz .done
-    pop rax             ; RAX = caracter (en el byte bajo)
-    ; escribir 1 byte usando la pila como buffer
-    push rax            ; dejar el byte en memoria para write
-    mov rax, 1          ; syscall write
-    mov rdi, 1          ; stdout
-    mov rsi, rsp        ; puntero al byte recien apilado
-    mov rdx, 1          ; longitud 1
-    syscall
-    pop rax             ; descartar el byte temporal
-    dec rcx
-    jmp .loop_emitir
-
-.done:
+    ; RSI apunta al primer digito; la longitud es (fin - RSI).
+    lea rdx, [uint_buf + 20]
+    sub rdx, rsi            ; RDX = cantidad de digitos
+    mov rax, 1              ; syscall write
+    mov rdi, 1              ; stdout
+    syscall                 ; un unico write con todos los digitos
     ret
+
+section .bss
+    ; Buffer para la conversion de enteros a texto en print_uint.
+    ; 20 bytes bastan para el maximo uint64 (18446744073709551615).
+    uint_buf  resb 20

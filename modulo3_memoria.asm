@@ -175,10 +175,10 @@ modulo3_memoria:
     mov rax, 99             ; syscall sysinfo
     mov rdi, sysinfo_b
     syscall
-    ; struct sysinfo: totalram en offset 32, mem_unit en offset 112
-    ; (x86-64). total_bytes = totalram * mem_unit.
-    mov rax, [sysinfo_b + 32]    ; totalram
-    mov r8d, dword [sysinfo_b + 112] ; mem_unit (unsigned int)
+    ; struct sysinfo (x86-64): totalram en offset 32, mem_unit en
+    ; offset 104. total_bytes = totalram * mem_unit.
+    mov rax, [sysinfo_b + 32]    ; totalram  (offset 32 en x86-64)
+    mov r8d, dword [sysinfo_b + 104] ; mem_unit (offset 104, unsigned int)
     test r8, r8
     jnz .tiene_unit
     mov r8, 1               ; si mem_unit==0, tratar como 1
