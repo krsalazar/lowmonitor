@@ -10,7 +10,7 @@ LDFLAGS =
 TARGET = lowmonitor
 
 # Orden: main primero (define _start), luego modulos y utilidades.
-SRC = main.asm modulo1_cpu.asm modulo2_ioports.asm utils.asm
+SRC = main.asm modulo1_cpu.asm modulo2_ioports.asm modulo3_memoria.asm utils.asm
 OBJ = $(SRC:.asm=.o)
 
 all: $(TARGET)
