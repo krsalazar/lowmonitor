@@ -19,7 +19,14 @@ section .data
     msg_p60          db "Puerto 60h (teclado): [OK]", 10, 0
     msg_p61          db "Puerto 61h (panel): [OK]", 10, 0
     msg_p3f8         db "Puerto 3F8h (COM1): [OK]", 10, 0
-    msg_err_ioperm   db "Error: Permisos denegados para E/S. Ejecute con sudo.", 10, 0
+
+    ; Mensaje informativo (no es un fallo del programa): el acceso
+    ; directo a puertos de E/S de hardware requiere privilegios por
+    ; diseno del kernel de Linux. El modulo continua sin abortar.
+    msg_sin_privs1   db "Acceso a puertos E/S no disponible: requiere privilegios.", 10, 0
+    msg_sin_privs2   db "  El kernel de Linux restringe IN/OUT a procesos privilegiados.", 10, 0
+    msg_sin_privs3   db "  Para probar este modulo, ejecute: sudo ./lowmonitor", 10, 0
+
     msg_salto_m2     db 10, 0
 
 section .text
@@ -75,7 +82,14 @@ modulo2_ioports:
     jmp .fin
 
 .error_permisos:
-    mov rdi, msg_err_ioperm
+    ; Condicion esperada cuando se corre sin privilegios.
+    ; Se informa con claridad y el modulo retorna limpio para que
+    ; el resto del programa (modulos 3, 4, 5...) siga ejecutandose.
+    mov rdi, msg_sin_privs1
+    call print_string
+    mov rdi, msg_sin_privs2
+    call print_string
+    mov rdi, msg_sin_privs3
     call print_string
     mov rdi, msg_salto_m2
     call print_string
