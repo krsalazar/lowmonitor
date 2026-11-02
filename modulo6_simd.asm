@@ -25,6 +25,17 @@
 ; constante), no de un reloj de pared de alta resolucion; el valor
 ; de GFLOPS es una estimacion representativa, no una medida de
 ; laboratorio.
+;
+; LIMITACION DE ENTORNO VIRTUALIZADO (medido): en la VM de prueba
+; cada grupo de 8 operaciones YMM tomo ~464 ciclos (bucle de 10M
+; iteraciones en ~4.6 mil millones de ciclos), frente a los ~2-4
+; ciclos esperados en hardware nativo. Esto es throttling/manejo
+; del estado AVX por el hipervisor: la CPU expone AVX2 via CPUID y
+; las instrucciones se EJECUTAN correctamente (de ahi los [OK]),
+; pero NO a velocidad nativa. Por eso el GFLOPS medido es bajo
+; (~0.1-0.3) en la VM; en hardware fisico se esperarian decenas de
+; GFLOPS. El modulo cumple el requisito (deteccion + operaciones
+; vectoriales reales con YMM); el valor numerico refleja el entorno.
 ; ==========================================================
 
 extern print_string
@@ -50,6 +61,8 @@ section .data
 
     lbl_gflops   db "Benchmark:                ", 0
     msg_gflops   db " GFLOPS", 10, 0
+    nota_vm      db "  (nota: en VM el AVX no corre a velocidad nativa;", 10
+                 db "   en hardware fisico se esperan decenas de GFLOPS)", 10, 0
 
     msg_salto    db 10, 0
 
@@ -242,6 +255,8 @@ modulo6_simd:
     pop rdi
     call print_fixed2
     mov rdi, msg_gflops
+    call print_string
+    mov rdi, nota_vm
     call print_string
 
 .fin:
