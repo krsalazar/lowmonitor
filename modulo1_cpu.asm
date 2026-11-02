@@ -11,6 +11,7 @@
 extern print_string
 
 section .data
+    msg_titulo        db "--- Modulo 1: Identificacion del CPU ---", 10, 0
     msg_procesador    db "Procesador: ", 0
     msg_arquitectura  db "Arquitectura: x86_64", 10, 0
     msg_extensiones   db "Extensiones: ", 0
@@ -72,6 +73,10 @@ modulo1_cpu:
     mov dword [cpuid_7_ebx], ebx
 
     ; --- Impresion de resultados ---
+    ; Encabezado del modulo (consistente con los demas modulos)
+    mov rdi, msg_titulo
+    call print_string
+
     ; Procesador
     mov rdi, msg_procesador
     call print_string
@@ -128,7 +133,10 @@ modulo1_cpu:
     call print_string
 
 .fin:
-    ; Salto de linea final del modulo
+    ; Salto de linea tras las extensiones, mas una linea en blanco
+    ; de separacion con el siguiente modulo (consistente con los demas).
+    mov rdi, msg_salto
+    call print_string
     mov rdi, msg_salto
     call print_string
     ret

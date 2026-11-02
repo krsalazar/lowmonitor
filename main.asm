@@ -15,6 +15,7 @@ extern modulo2_ioports
 extern modulo3_memoria
 extern modulo4_rendimiento
 extern modulo5_jerarquia
+extern modulo6_simd
 
 section .text
     global _start
@@ -35,7 +36,8 @@ _start:
     ; Modulo 5: Gestion jerarquica de memoria
     call modulo5_jerarquia
 
-    ; (Aqui se encadenara el modulo 6)
+    ; Modulo 6: Operaciones SIMD (bonus)
+    call modulo6_simd
 
     ; --- Salida del programa ---
     mov rax, 60         ; syscall: exit
