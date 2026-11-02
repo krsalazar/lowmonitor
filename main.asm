@@ -14,6 +14,7 @@ extern modulo1_cpu
 extern modulo2_ioports
 extern modulo3_memoria
 extern modulo4_rendimiento
+extern modulo5_jerarquia
 
 section .text
     global _start
@@ -31,7 +32,10 @@ _start:
     ; Modulo 4: Monitor de rendimiento del CPU
     call modulo4_rendimiento
 
-    ; (Aqui se encadenaran los modulos 5 y 6)
+    ; Modulo 5: Gestion jerarquica de memoria
+    call modulo5_jerarquia
+
+    ; (Aqui se encadenara el modulo 6)
 
     ; --- Salida del programa ---
     mov rax, 60         ; syscall: exit
