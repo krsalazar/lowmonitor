@@ -13,6 +13,7 @@
 extern modulo1_cpu
 extern modulo2_ioports
 extern modulo3_memoria
+extern modulo4_rendimiento
 
 section .text
     global _start
@@ -27,7 +28,10 @@ _start:
     ; Modulo 3: Diagnostico de memoria
     call modulo3_memoria
 
-    ; (Aqui se encadenaran los modulos 4, 5 y 6)
+    ; Modulo 4: Monitor de rendimiento del CPU
+    call modulo4_rendimiento
+
+    ; (Aqui se encadenaran los modulos 5 y 6)
 
     ; --- Salida del programa ---
     mov rax, 60         ; syscall: exit

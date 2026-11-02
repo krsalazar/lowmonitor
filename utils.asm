@@ -9,6 +9,7 @@ section .text
     global print_string
     global strlen
     global print_uint
+    global print_fixed2
 
 ; ----------------------------------------------------------
 ; strlen: calcula la longitud de una cadena terminada en NUL.
@@ -87,7 +88,52 @@ print_uint:
     syscall                 ; un unico write con todos los digitos
     ret
 
+; ----------------------------------------------------------
+; print_fixed2: imprime un numero con 2 decimales a partir de un
+;   entero escalado por 100. Ej: 158 -> "1.58", 56 -> "0.56",
+;   340 -> "3.40", 7 -> "0.07".
+;   Entrada: RDI = valor escalado (valor_real * 100)
+; ----------------------------------------------------------
+print_fixed2:
+    push rbx
+    mov rax, rdi
+    xor rdx, rdx
+    mov rbx, 100
+    div rbx                 ; RAX = parte entera, RDX = resto (0..99)
+    push rdx                ; guardar los 2 decimales
+
+    ; Imprimir la parte entera reutilizando print_uint
+    mov rdi, rax
+    call print_uint
+
+    ; Imprimir el punto decimal
+    mov byte [fixed_tmp], '.'
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, fixed_tmp
+    mov rdx, 1
+    syscall
+
+    ; Imprimir los 2 decimales con cero a la izquierda si hace falta
+    pop rax                 ; RAX = resto (0..99)
+    mov rcx, 10
+    xor rdx, rdx
+    div rcx                 ; RAX = decena, RDX = unidad
+    add al, '0'
+    add dl, '0'
+    mov [fixed_tmp], al     ; primer decimal
+    mov [fixed_tmp + 1], dl ; segundo decimal
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, fixed_tmp
+    mov rdx, 2
+    syscall
+
+    pop rbx
+    ret
+
 section .bss
+    fixed_tmp resb 2        ; buffer temporal de print_fixed2
     ; Buffer para la conversion de enteros a texto en print_uint.
     ; 20 bytes bastan para el maximo uint64 (18446744073709551615).
     uint_buf  resb 20
