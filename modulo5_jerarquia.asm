@@ -7,15 +7,25 @@
 ; Expone la rutina 'modulo5_jerarquia', llamada desde main.asm.
 ; Depende de print_string y print_fixed2 (utils.asm).
 ;
-; Metodo (pointer chasing):
-;   Para medir un nivel se recorre una cadena de punteros alojada
-;   en un buffer de tamano = al de ese nivel. Cada posicion guarda
-;   la DIRECCION de la siguiente a visitar, con un paso (stride) de
-;   64 bytes (una linea de cache) para tocar lineas distintas y
-;   dejar inutil al prefetcher secuencial. Como cada acceso depende
-;   del valor leido en el anterior, el CPU no puede paralelizarlos
-;   ni adelantarlos: el tiempo medido es la latencia real del nivel
-;   donde reside el buffer.
+; Metodo (pointer chasing con recorrido permutado):
+;   Para medir un nivel se recorre una cadena ciclica de punteros
+;   alojada en un buffer del tamano de ese nivel. Cada nodo ocupa
+;   una linea de cache (64 B) y guarda la DIRECCION del siguiente.
+;   Como cada acceso depende del valor leido en el anterior, el CPU
+;   no puede paralelizarlos: se expone la latencia real del nivel.
+;
+;   Clave para derrotar al prefetcher (mejor practica de lmbench):
+;   los nodos NO se enlazan en orden fisico (0,1,2,...), que el
+;   prefetcher de hardware detectaria y precargaria, falseando la
+;   medicion. En su lugar se enlazan segun una PERMUTACION:
+;       siguiente_indice = (indice + PASO) mod N
+;   con N = numero de nodos (potencia de 2, pues los tamanos lo son)
+;   y PASO impar. Al ser PASO coprimo con una potencia de 2, la
+;   secuencia visita los N nodos exactamente una vez y cierra el
+;   ciclo: un unico recorrido disperso e impredecible. Ademas PASO
+;   abarca varias lineas (> 1), evitando tambien el prefetch de
+;   stride. El resultado es que cada acceso es un fallo real en el
+;   nivel medido.
 ;
 ;   latencia_ciclos = (TSC_fin - TSC_ini) / numero_de_accesos
 ;   El TSC se serializa con CPUID antes de leerlo.
@@ -35,7 +45,12 @@ extern print_string
 extern print_fixed2
 
 %define STRIDE   64                ; tamano de linea de cache (bytes)
-%define ACCESOS  1000000           ; accesos por medicion
+%define ACCESOS  2000000           ; accesos por medicion
+; PASO de la permutacion (en numero de nodos). Impar => coprimo con
+; cualquier N potencia de 2, por lo que (i*PASO mod N) recorre todos
+; los nodos. Grande y no trivial para saltar varias lineas y evitar
+; el prefetch de stride. Primo elegido empiricamente.
+%define PASO     2039
 
 %define SZ_L1    16384             ; 16 KB
 %define SZ_L2    262144            ; 256 KB
@@ -80,29 +95,41 @@ leer_tsc_m5:
 
 ; ----------------------------------------------------------
 ; construir_cadena
-;   Prepara una cadena ciclica de punteros en buffer_mem. Cada nodo
-;   (en pasos de STRIDE) apunta al siguiente; el ultimo al primero.
+;   Enlaza los nodos de buffer_mem segun la permutacion
+;   idx(k) = (k * PASO) mod N, formando un unico ciclo disperso.
+;   El nodo fisico idx(k) apunta al nodo fisico idx(k+1).
 ;   Entrada: RDI = tamano del buffer (bytes)
+;   N = tamano / 64 (potencia de 2). mod N = and (N-1).
 ; ----------------------------------------------------------
 construir_cadena:
-    mov rcx, rdi
-    shr rcx, 6              ; nodos = tamano / 64
-    mov rsi, buffer_mem     ; nodo fisico actual
-    mov r9, buffer_mem      ; base
-    mov rdx, 1              ; indice del siguiente nodo
+    mov r10, rdi
+    shr r10, 6             ; R10 = N (numero de nodos)
+    mov r11, r10
+    dec r11               ; R11 = N - 1 (mascara para mod N)
+    mov r9, buffer_mem    ; base
+
+    xor rcx, rcx          ; k = 0 (contador de nodos enlazados)
 .loop:
-    cmp rdx, rcx
-    jb .no_wrap
-    xor rdx, rdx            ; cerrar el ciclo hacia el nodo 0
-.no_wrap:
-    mov r8, rdx
-    shl r8, 6               ; indice * 64
-    add r8, r9              ; base + offset
-    mov [rsi], r8           ; actual -> siguiente
-    add rsi, STRIDE
-    inc rdx
-    dec rcx
-    jnz .loop
+    ; idx = (k * PASO) and (N-1)
+    mov rax, rcx
+    imul rax, PASO
+    and rax, r11          ; rax = idx fisico del nodo k
+
+    ; idx_next = ((k+1) * PASO) and (N-1)
+    lea rdx, [rcx + 1]
+    imul rdx, PASO
+    and rdx, r11          ; rdx = idx fisico del nodo k+1
+
+    ; nodo_fisico[idx] = direccion de nodo_fisico[idx_next]
+    shl rax, 6            ; idx * 64
+    shl rdx, 6            ; idx_next * 64
+    add rax, r9           ; &buffer[idx]
+    add rdx, r9           ; &buffer[idx_next]
+    mov [rax], rdx        ; enlazar
+
+    inc rcx
+    cmp rcx, r10
+    jb .loop
     ret
 
 ; ----------------------------------------------------------
