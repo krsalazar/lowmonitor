@@ -163,19 +163,37 @@ modulo6_simd:
     imul r13, 10                ; r13 = frecuencia en Hz
 
     ; --- 7. Benchmark GFLOPS ---
-    ; Bucle: cada iteracion hace vaddps + vmulps sobre YMM = 2 ops
-    ; vectoriales de 8 floats c/u = 16 FLOPs por iteracion.
+    ; Para medir el throughput real hay que evitar la cadena de
+    ; dependencias: si todas las operaciones escriben el mismo
+    ; registro, se serializan. Usamos 8 acumuladores YMM
+    ; independientes (ymm2..ymm9); el CPU superescalar puede
+    ; despachar varias por ciclo.
+    ; Cada iteracion: 8 vaddps + 8 vmulps = 16 instrucciones YMM,
+    ; cada una 8 floats => 16 * 8 = 128 FLOPs por iteracion.
     vmovaps ymm0, [vec_a]
     vmovaps ymm1, [vec_b]
     vmovaps ymm2, [vec_a]
+    vmovaps ymm3, [vec_b]
+    vmovaps ymm4, [vec_a]
+    vmovaps ymm5, [vec_b]
+    vmovaps ymm6, [vec_a]
+    vmovaps ymm7, [vec_b]
+    vmovaps ymm8, [vec_a]
+    vmovaps ymm9, [vec_b]
 
     call leer_tsc_m6
     mov r14, rax                ; TSC inicial
 
     mov rcx, ITERS_FLOP
 .bucle_flop:
-    vaddps  ymm2, ymm2, ymm1    ; 8 FLOPs
-    vmulps  ymm2, ymm2, ymm0    ; 8 FLOPs
+    vaddps  ymm2, ymm2, ymm1
+    vaddps  ymm3, ymm3, ymm0
+    vaddps  ymm4, ymm4, ymm1
+    vaddps  ymm5, ymm5, ymm0
+    vmulps  ymm6, ymm6, ymm1
+    vmulps  ymm7, ymm7, ymm0
+    vmulps  ymm8, ymm8, ymm1
+    vmulps  ymm9, ymm9, ymm0
     dec rcx
     jnz .bucle_flop
 
@@ -183,33 +201,35 @@ modulo6_simd:
     sub rax, r14                ; ciclos del bucle
     mov r15, rax
 
-    ; FLOPs totales = ITERS_FLOP * 16
+    ; FLOPs totales = ITERS_FLOP * 64
+    ; (8 instrucciones YMM por iteracion * 8 floats = 64 FLOPs)
     mov rax, ITERS_FLOP
-    mov rcx, 16
+    mov rcx, 64
     mul rcx
     mov r12, rax                ; r12 = FLOPs totales
 
-    ; GFLOPS*100 = FLOPs * 100 * frecuencia / ciclos / 1e9
-    ;           = FLOPs * frecuencia / ciclos / 1e7
-    ; Para no desbordar: GFLOPS*100 = (FLOPs/ciclos aprox) ...
-    ; Hacemos: tmp = FLOPs * frecuencia_Hz   (puede ser grande)
-    ; GFLOPS*100 = tmp / ciclos / 10,000,000
-    ; Reordenamos para precision: primero FLOPs*100, luego escalas.
-    ;   seg = ciclos / frecuencia
-    ;   GFLOPS = FLOPs / seg / 1e9 = FLOPs * frecuencia / ciclos / 1e9
-    ;   GFLOPS*100 = FLOPs * frecuencia / ciclos / 1e7
-    ; Calculo por pasos cuidando el rango de 64 bits:
-    mov rax, r12                ; FLOPs
+    ; GFLOPS = FLOPs / segundos / 1e9, con segundos = ciclos / freq
+    ;        = FLOPs * freq / ciclos / 1e9
+    ; GFLOPS*100 = FLOPs * freq * 100 / ciclos / 1e9
+    ; Para no perder precision ni desbordar:
+    ;   - GHz*100 = freq / 1e7   (freq ~1e9 -> ~100..400)
+    ;   - FLOPs/ciclos = ops por ciclo (entero pequeno, se pierde
+    ;     precision) -> en su lugar: (FLOPs * 100) / ciclos primero,
+    ;     luego * (freq/1e9). Pero freq/1e9 < 1 => perderia todo.
+    ; Mejor: GFLOPS*100 = (FLOPs/ciclos) * (freq*100/1e9)
+    ;   factor = freq*100/1e9 = freq/1e7  (ej: 1.05e9 -> 105)
+    ;   ops_por_ciclo_x? No. Hacemos todo en una division final:
+    ;   num = FLOPs * (freq/1e7)        ; freq/1e7 ~ 105
+    ;   GFLOPS*100 = num / ciclos
+    mov rax, r13                ; freq_Hz
     xor rdx, rdx
-    mov rcx, 100
-    mul rcx                     ; RDX:RAX = FLOPs * 100
-    div r15                     ; RAX = (FLOPs*100)/ciclos  = ops/ciclo *100
-    ; ahora multiplicar por frecuencia y dividir por 1e9:
-    ; GFLOPS*100 = (ops/ciclo*100) * frecuencia / 1e9
-    xor rdx, rdx
-    mul r13                     ; RDX:RAX = (ops/ciclo*100) * frecuencia_Hz
-    mov rcx, 1000000000
-    div rcx                     ; RAX = GFLOPS * 100
+    mov rcx, 10000000           ; 1e7
+    div rcx                     ; RAX = freq / 1e7  (= GHz*100)
+    mov rcx, rax                ; rcx = factor (GHz*100)
+
+    mov rax, r12                ; FLOPs totales
+    mul rcx                     ; RDX:RAX = FLOPs * factor
+    div r15                     ; RAX = GFLOPS * 100
 
     mov rdi, lbl_gflops
     push rax
