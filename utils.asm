@@ -8,6 +8,7 @@
 section .text
     global print_string
     global strlen
+    global print_uint
 
 ; ----------------------------------------------------------
 ; strlen: calcula la longitud de una cadena terminada en NUL.
@@ -40,3 +41,53 @@ print_string:
     mov rdi, 1          ; fd: stdout
     syscall
     ret
+
+; ----------------------------------------------------------
+; print_uint: imprime un entero de 64 bits SIN signo en decimal.
+;   Entrada: RDI = valor a imprimir
+;   Metodo : se extraen los digitos por division sucesiva entre
+;            10 y se escriben de atras hacia adelante en un buffer
+;            fijo; al final se emiten con UN solo write.
+;   Importante: NO se hace ningun syscall dentro del bucle de
+;   extraccion, porque la instruccion syscall destruye RCX y R11;
+;   todo el syscall write ocurre una sola vez al final.
+;   Altera : RAX, RCX, RDX, RSI, RDI, R8, R9 (clobbers de syscall)
+; ----------------------------------------------------------
+print_uint:
+    mov rax, rdi            ; RAX = valor
+    mov r9, 10              ; divisor
+    ; RSI apunta al final del buffer y se decrementa antes de cada
+    ; escritura, dejando los digitos en orden correcto.
+    lea rsi, [uint_buf + 20]
+
+    ; Caso especial: valor == 0
+    test rax, rax
+    jnz .extraer
+    dec rsi
+    mov byte [rsi], '0'
+    jmp .emitir
+
+.extraer:
+    ; Mientras RAX != 0: dividir por 10; el resto es un digito.
+.loop_div:
+    xor rdx, rdx            ; limpiar RDX antes de DIV de 128 bits
+    div r9                  ; RAX = cociente, RDX = resto (0..9)
+    add dl, '0'             ; resto -> ASCII
+    dec rsi                 ; retroceder una posicion en el buffer
+    mov [rsi], dl           ; escribir el digito
+    test rax, rax
+    jnz .loop_div
+
+.emitir:
+    ; RSI apunta al primer digito; la longitud es (fin - RSI).
+    lea rdx, [uint_buf + 20]
+    sub rdx, rsi            ; RDX = cantidad de digitos
+    mov rax, 1              ; syscall write
+    mov rdi, 1              ; stdout
+    syscall                 ; un unico write con todos los digitos
+    ret
+
+section .bss
+    ; Buffer para la conversion de enteros a texto en print_uint.
+    ; 20 bytes bastan para el maximo uint64 (18446744073709551615).
+    uint_buf  resb 20
