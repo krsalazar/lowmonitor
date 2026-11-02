@@ -184,16 +184,21 @@ modulo6_simd:
     call leer_tsc_m6
     mov r14, rax                ; TSC inicial
 
+    ; Cada operacion lee los vectores de entrada fijos (ymm0, ymm1)
+    ; y escribe en un registro destino distinto. Asi los valores NO
+    ; se realimentan ni divergen a Inf/NaN (que dispararian asistencias
+    ; de microcodigo de cientos de ciclos y falsearian el benchmark),
+    ; y los 8 destinos son independientes para saturar las unidades FP.
     mov rcx, ITERS_FLOP
 .bucle_flop:
-    vaddps  ymm2, ymm2, ymm1
-    vaddps  ymm3, ymm3, ymm0
-    vaddps  ymm4, ymm4, ymm1
-    vaddps  ymm5, ymm5, ymm0
-    vmulps  ymm6, ymm6, ymm1
-    vmulps  ymm7, ymm7, ymm0
-    vmulps  ymm8, ymm8, ymm1
-    vmulps  ymm9, ymm9, ymm0
+    vaddps  ymm2, ymm0, ymm1
+    vaddps  ymm3, ymm0, ymm1
+    vaddps  ymm4, ymm0, ymm1
+    vaddps  ymm5, ymm0, ymm1
+    vmulps  ymm6, ymm0, ymm1
+    vmulps  ymm7, ymm0, ymm1
+    vmulps  ymm8, ymm0, ymm1
+    vmulps  ymm9, ymm0, ymm1
     dec rcx
     jnz .bucle_flop
 
