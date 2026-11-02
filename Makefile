@@ -24,4 +24,17 @@ $(TARGET): $(OBJ)
 clean:
 	rm -f $(OBJ) $(TARGET)
 
-.PHONY: all clean
+# Opcional: otorga solo CAP_SYS_RAWIO al binario para que el Modulo 2
+# lea los puertos reales ejecutandose como usuario normal (sin root).
+# Requiere sudo una vez; se pierde al recompilar (make lo regenera).
+# getcap/setcap viven en /usr/sbin (fuera del PATH de un usuario
+# normal en Debian); se ejecutan con sudo para que se encuentren.
+caps: $(TARGET)
+	sudo setcap cap_sys_rawio+ep $(TARGET)
+	sudo getcap $(TARGET)
+
+# Quita la capability del binario.
+nocaps:
+	sudo setcap -r $(TARGET)
+
+.PHONY: all clean caps nocaps
