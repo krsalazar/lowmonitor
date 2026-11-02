@@ -19,8 +19,10 @@ esto va a generar un archivo llamado lowmonitor, posteriormente, ejecutamos este
 
 ## Permisos y Modulo 2 (puertos E/S)
 
-El programa completo se ejecuta como usuario regular, sin sudo:
+El programa completo se ejecuta como usuario regular, sin sudo y sin
+ningun paso previo, en cualquier equipo Linux x86-64:
 
+    make
     ./lowmonitor
 
 Las instrucciones IN/OUT solo se permiten a procesos con la capability
@@ -29,9 +31,10 @@ el CPU la bloquea con una excepcion de proteccion general (#GP, vector 13),
 el programa la captura con un manejador de SIGSEGV y reporta el resultado
 de cada operacion como `[DENEGADO] excepcion vector 13`.
 
-Para ver los valores reales de los puertos sin ejecutar como root, se le
-puede otorgar al binario solo esa capability (requiere sudo una vez y se
-pierde al recompilar):
+**Opcional (no es necesario para ejecutar el programa):** para ver los
+valores reales de los puertos sin ejecutar como root, se le puede otorgar
+al binario solo esa capability. Requiere sudo una vez por equipo y se
+pierde al recompilar:
 
     make caps      # sudo setcap cap_sys_rawio+ep lowmonitor
     ./lowmonitor   # usuario normal, acceso real a puertos
