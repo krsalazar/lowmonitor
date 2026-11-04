@@ -1,22 +1,9 @@
 ; ==========================================================
-; modulo3_memoria.asm
-; Modulo 3: Diagnostico de memoria
-;   Testea la integridad de un bloque de memoria aplicando tres
-;   patrones de prueba (0xAA, 0x55 y una secuencia incremental),
-;   escribiendo y releyendo cada byte, y contando los BITS
-;   corruptos (no solo los bytes) cuando el valor leido difiere
-;   del escrito.
-;
-;   Ademas reporta la RAM total del sistema obtenida con el
-;   syscall sysinfo (99), sin requerir privilegios.
-;
-; Expone la rutina 'modulo3_memoria', llamada desde main.asm.
-; Depende de print_string y print_uint (utils.asm).
-;
-; Nota: se prueba un buffer en espacio de usuario (BUF_SIZE), no
-; toda la RAM fisica, ya que mapear toda la memoria fisica exige
-; privilegios de kernel. El algoritmo es el estandar de un test
-; de memoria (escribir patron -> releer -> comparar).
+; modulo3_memoria.asm - Modulo 3: Diagnostico de memoria
+;   Escribe y relee un buffer de 1 MiB con tres patrones (0xAA, 0x55 e
+;   incremental) y cuenta los bits corruptos (XOR + POPCNT). Reporta la
+;   RAM total con sysinfo (99). Prueba un buffer de usuario, no toda la
+;   RAM fisica (eso requiere privilegios de kernel).
 ; ==========================================================
 
 extern print_string
@@ -175,8 +162,7 @@ modulo3_memoria:
     mov rax, 99             ; syscall sysinfo
     mov rdi, sysinfo_b
     syscall
-    ; struct sysinfo (x86-64): totalram en offset 32, mem_unit en
-    ; offset 104. total_bytes = totalram * mem_unit.
+    ; total_bytes = totalram * mem_unit
     mov rax, [sysinfo_b + 32]    ; totalram  (offset 32 en x86-64)
     mov r8d, dword [sysinfo_b + 104] ; mem_unit (offset 104, unsigned int)
     test r8, r8

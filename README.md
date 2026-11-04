@@ -1,49 +1,189 @@
-# lowmonitor
-Proyecto del curso Arquitectura de computadoras 2
+# LowMonitor
 
-Configuraciones iniciales:
-Este proyecto se desarrollo en un entorno de Ubuntu, no es virtualizado, el equipo corre el sistema operativo de forma local.
-Para iniciar, necesitamos instalar un ensamblador y enlazador, primero, actualizamos el sistema base con
-sudo apt update && sudo apt upgrade
+Herramienta de diagnóstico y monitorización de hardware escrita en
+**ensamblador x86-64** para Linux, sin dependencias externas. Se comunica
+con el sistema operativo mediante syscalls directas y produce un único
+binario ELF64.
 
-Ahora vamos a instalar NASM 2.15+ (o GAS) como ensamblador y GNU ld como enlazador.
-sudo apt install nasm binutils
+LowMonitor inspecciona el procesador y la memoria a través de seis módulos:
+identificación del CPU, acceso a puertos de E/S, prueba de integridad de
+memoria, medición de rendimiento con el contador de ciclos, análisis de la
+jerarquía de caché y operaciones vectoriales SIMD.
 
-Tambien necesitamos una herramienta para compilar por medio de un archivo makefile:
-sudo apt install make
+---
 
-teniendo estas herramientas instaladas, procedemos a compilar el código desarrollado, en la terminal, abierta en la carpeta donde se encuentra el còdigo, ejecutamos el comando:
+## Índice
+
+- [Características](#características)
+- [Requisitos](#requisitos)
+- [Instalación](#instalación)
+- [Uso](#uso)
+- [Módulos](#módulos)
+- [Acceso a puertos de E/S](#acceso-a-puertos-de-es)
+- [Validación](#validación)
+- [Estructura del proyecto](#estructura-del-proyecto)
+
+---
+
+## Características
+
+- Escrito 100 % en ensamblador x86-64 (NASM), sin libc.
+- Corre como usuario regular; no requiere privilegios de root.
+- Detección de CPU y extensiones SIMD vía `CPUID`.
+- Acceso real a puertos de E/S con `IN`/`OUT`, con manejo de la excepción
+  de protección cuando no hay privilegios.
+- Medición de rendimiento con `RDTSC` (frecuencia, CPI, IPC).
+- Análisis de latencia de caché por *pointer chasing*.
+- Operaciones vectoriales AVX2 sobre registros YMM de 256 bits.
+
+---
+
+## Requisitos
+
+| Componente | Detalle |
+|---|---|
+| Arquitectura | x86-64 (AMD64 / Intel 64) |
+| Sistema operativo | Linux de 64 bits |
+| Ensamblador | NASM 2.15+ |
+| Enlazador | GNU ld (binutils) |
+| Build | GNU make |
+
+---
+
+## Instalación
+
+```bash
+# Dependencias (Debian/Ubuntu)
+sudo apt install nasm binutils make
+
+# Compilar
 make
-esto va a generar un archivo llamado lowmonitor, posteriormente, ejecutamos este archivo desde la terminal:
+```
+
+La compilación genera el binario `lowmonitor`. Para limpiar los artefactos:
+
+```bash
+make clean
+```
+
+---
+
+## Uso
+
+```bash
 ./lowmonitor
+```
 
-## Permisos y Modulo 2 (puertos E/S)
+Ejecuta los seis módulos en secuencia e imprime los resultados. No requiere
+argumentos ni privilegios.
 
-El programa completo se ejecuta como usuario regular, sin sudo y sin
-ningun paso previo, en cualquier equipo Linux x86-64:
+```text
+--- Modulo 1: Identificacion del CPU ---
+Procesador: Intel Core Processor (Skylake)
+Arquitectura: x86_64
+Extensiones: SSE SSE2 AVX AVX2
 
-    make
-    ./lowmonitor
+--- Modulo 3: Diagnostico de memoria ---
+Patron 0xAA:              PASADA (0 errores)
+Patron 0x55:              PASADA (0 errores)
+Patron incremental:       PASADA (0 errores)
+Memoria total:            7943 MB detectada
 
-Las instrucciones IN/OUT solo se permiten a procesos con la capability
-CAP_SYS_RAWIO. Sin ella, el Modulo 2 ejecuta igual cada operacion de E/S;
-el CPU la bloquea con una excepcion de proteccion general (#GP, vector 13),
-el programa la captura con un manejador de SIGSEGV y reporta el resultado
-de cada operacion como `[DENEGADO] excepcion vector 13`.
+--- Modulo 4: Monitor de rendimiento del CPU ---
+Frecuencia (TSC):         1.00 GHz
+CPI promedio:             0.34
+IPC:                      2.90
 
-**Opcional (no es necesario para ejecutar el programa):** para ver los
-valores reales de los puertos sin ejecutar como root, se le puede otorgar
-al binario solo esa capability. Requiere sudo una vez por equipo y se
-pierde al recompilar:
+--- Modulo 5: Gestion jerarquica de memoria ---
+L1 cache:   3.04 ciclos/acceso   (16 KB)
+L2 cache:   7.52 ciclos/acceso   (256 KB)
+L3 cache:   10.84 ciclos/acceso  (8 MB)
+RAM:        175.25 ciclos/acceso (64 MB)
+```
 
-    make caps      # sudo setcap cap_sys_rawio+ep lowmonitor
-    ./lowmonitor   # usuario normal, acceso real a puertos
-    make nocaps    # quitar la capability
+*(Salida abreviada; los valores dependen del hardware.)*
 
-Estados posibles en el Modulo 2:
+---
+
+## Módulos
+
+| # | Módulo | Descripción |
+|---|---|---|
+| 1 | Identificación del CPU | Nombre comercial del procesador (`CPUID`) y extensiones SSE, SSE2, AVX, AVX2, AVX-512. |
+| 2 | Puertos de E/S | `IN`/`OUT` en 8/16/32 bits sobre puertos estándar (teclado 60h, panel 61h, COM1 3F8h) con verificación de estado. |
+| 3 | Diagnóstico de memoria | Prueba de integridad con patrones 0xAA, 0x55 e incremental; conteo de bits corruptos. RAM total vía `sysinfo`. |
+| 4 | Rendimiento del CPU | `RDTSC`: frecuencia del contador, ciclos totales, CPI e IPC. |
+| 5 | Jerarquía de memoria | Latencia por nivel (registros, L1, L2, L3, RAM) por *pointer chasing* con recorrido permutado. |
+| 6 | SIMD (AVX2) | Suma, multiplicación y comparación vectoriales sobre YMM (256 bits); estimación de throughput. |
+
+---
+
+## Acceso a puertos de E/S
+
+Las instrucciones `IN`/`OUT` son privilegiadas: el kernel solo las permite a
+procesos con la capability `CAP_SYS_RAWIO`. LowMonitor las ejecuta de todos
+modos; sin privilegios, el CPU lanza una excepción de protección general
+(#GP, vector 13) que el programa captura con un manejador de `SIGSEGV` y
+reporta de forma controlada, sin abortar. Así usa `IN`/`OUT` reales sin
+necesidad de ejecutarse como root.
+
+Estados reportados:
 
 | Estado | Significado |
 |---|---|
-| `[OK]` | IN: el puerto respondio con un valor distinto de 0xFF. OUT: se ejecuto sin excepcion |
-| `[--]` | IN: se leyo 0xFF (bus flotante, ningun dispositivo respondio) |
-| `[DENEGADO] excepcion vector 13` | El CPU bloqueo la instruccion por falta de permiso de E/S |
+| `[OK]` | `IN`: el puerto respondió (valor ≠ 0xFF). `OUT`: se ejecutó sin excepción. |
+| `[--]` | `IN`: se leyó 0xFF (bus flotante, sin respuesta). |
+| `[DENEGADO] excepcion vector 13` | El CPU bloqueó la instrucción por falta de permiso. |
+
+Para leer los valores reales de los puertos sin ejecutar como root, se puede
+conceder solo esa capability al binario (opcional):
+
+```bash
+make caps      # setcap cap_sys_rawio+ep (requiere sudo una vez)
+./lowmonitor
+make nocaps    # revierte
+```
+
+---
+
+## Validación
+
+El script `validar.sh` contrasta cada módulo contra herramientas nativas del
+sistema para verificar que los resultados son reales:
+
+```bash
+./validar.sh
+```
+
+| Módulo | Contrastado con |
+|---|---|
+| 1 | `lscpu`, `/proc/cpuinfo` |
+| 2 | `/proc/ioports` |
+| 3 | `free`, `/proc/meminfo` |
+| 4 | `/proc/cpuinfo`; `perf` si está disponible |
+| 5 | `lscpu`, `/sys/.../cache` |
+| 6 | `/proc/cpuinfo` |
+
+---
+
+## Estructura del proyecto
+
+```
+lowmonitor/
+├── main.asm                Punto de entrada; orquesta los módulos
+├── modulo1_cpu.asm         Identificación del CPU
+├── modulo2_ioports.asm     Puertos de E/S
+├── modulo3_memoria.asm     Diagnóstico de memoria
+├── modulo4_rendimiento.asm Rendimiento del CPU (RDTSC)
+├── modulo5_jerarquia.asm   Jerarquía de memoria
+├── modulo6_simd.asm        Operaciones SIMD (AVX2)
+├── utils.asm               Rutinas compartidas (print_string, print_uint, print_fixed2)
+├── Makefile                Build y targets auxiliares
+├── validar.sh              Validación cruzada contra herramientas del sistema
+├── docs/                   Reporte técnico (PDF)
+└── README.md
+```
+
+Cada módulo es un archivo independiente que expone su rutina con `global` y
+consume las utilidades compartidas mediante `extern`; el enlazador une todos
+los objetos en un solo binario.

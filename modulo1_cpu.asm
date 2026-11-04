@@ -1,11 +1,7 @@
 ; ==========================================================
-; modulo1_cpu.asm
-; Modulo 1: Identificacion del CPU
-;   - Extrae el nombre comercial (brand string) via CPUID
-;     hojas 0x80000002..0x80000004.
-;   - Detecta extensiones SSE, SSE2, AVX, AVX2 y AVX-512.
-; Expone la rutina 'modulo1_cpu', llamada desde main.asm.
-; Depende de print_string (utils.asm).
+; modulo1_cpu.asm - Modulo 1: Identificacion del CPU
+;   Brand string (CPUID 0x80000002-4) y extensiones SSE, SSE2, AVX,
+;   AVX2 y AVX-512 (CPUID hojas 1 y 7).
 ; ==========================================================
 
 extern print_string
@@ -73,7 +69,7 @@ modulo1_cpu:
     mov dword [cpuid_7_ebx], ebx
 
     ; --- Impresion de resultados ---
-    ; Encabezado del modulo (consistente con los demas modulos)
+    ; Encabezado del modulo
     mov rdi, msg_titulo
     call print_string
 
@@ -133,8 +129,7 @@ modulo1_cpu:
     call print_string
 
 .fin:
-    ; Salto de linea tras las extensiones, mas una linea en blanco
-    ; de separacion con el siguiente modulo (consistente con los demas).
+    ; Salto de linea y linea en blanco de separacion
     mov rdi, msg_salto
     call print_string
     mov rdi, msg_salto
