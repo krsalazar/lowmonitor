@@ -225,7 +225,31 @@ refleja fielmente el entorno de ejecución.
 
 ---
 
-## 9. Conclusiones
+## 9. Validación cruzada contra herramientas nativas
+
+Para demostrar que los resultados de LowMonitor son verídicos y no valores
+simulados, el script `validar.sh` contrasta cada módulo contra la
+herramienta estándar equivalente del sistema. Resultados obtenidos en el
+entorno de prueba:
+
+| Módulo | LowMonitor | Fuente nativa | Coincidencia |
+|---|---|---|---|
+| 1 CPU | Skylake; SSE SSE2 AVX AVX2 | `lscpu`: Skylake; flags `avx avx2 sse sse2` | Exacta |
+| 3 Memoria | 7943 MB | `free`: 7943 MB; `/proc/meminfo`: 7943 MB | Exacta (al MB) |
+| 4 Rendimiento | 1.05 GHz | `/proc/cpuinfo` `cpu MHz`: 1000.077 | Coherente (~1 GHz) |
+| 5 Jerarquía | L1 3.0 < L2 7.3 < L3 10.7 < RAM 179 ciclos | `/sys`: L1 32K, L2 4 MB, L3 16 MB | Buffers válidos, progresión correcta |
+| 6 SIMD | AVX2: Sí | `/proc/cpuinfo`: flag `avx2` presente | Coincide |
+
+El caso más concluyente es el Módulo 3: la memoria total (7943 MB) coincide
+exactamente con `free` y con `/proc/meminfo`, lo que prueba que la lectura
+vía `sysinfo` obtiene datos reales del kernel. El Módulo 2 se valida de
+forma indirecta: `/proc/ioports` confirma que los puertos consultados están
+reservados por el kernel, coherente con que las instrucciones `IN`/`OUT`
+sean rechazadas sin privilegios.
+
+---
+
+## 10. Conclusiones
 
 - Los seis módulos se implementaron íntegramente en ensamblador x86-64
   nativo, con registros de 64 bits y syscalls directas, cumpliendo el
@@ -243,7 +267,7 @@ refleja fielmente el entorno de ejecución.
 
 ---
 
-## 10. Compilación y ejecución
+## 11. Compilación y ejecución
 
 ```bash
 sudo apt install nasm binutils make   # dependencias

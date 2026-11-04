@@ -63,14 +63,22 @@ echo "$SALIDA" | sed -n '/Modulo 2/,/^$/p' | grep -E 'Modo:|Puerto|IN |OUT ' | h
 
 sub "Fuente nativa (/proc/ioports - mapa de puertos del kernel):"
 if [ -r /proc/ioports ]; then
-    grep -iE '0060|0061|03f8|keyboard|serial' /proc/ioports | sed 's/^/  /' \
-        || echo "  (no se listan esos rangos; el acceso directo requiere privilegios)"
+    coincidencias="$(grep -iE '0060|0061|03f8|keyboard|serial' /proc/ioports)"
+    if [ -n "$coincidencias" ]; then
+        echo "$coincidencias" | sed 's/^/  /'
+        echo "  (Un usuario sin privilegios ve las direcciones como 0000-0000:"
+        echo "   el kernel OCULTA los rangos reales, igual que bloquea el acceso"
+        echo "   directo. Aun asi confirma que 'keyboard' existe como recurso"
+        echo "   reservado. Con sudo se verian las direcciones 0060, 0061, 03f8.)"
+    else
+        echo "  (no se listan esos rangos para este usuario)"
+    fi
 else
     echo "  /proc/ioports no legible por este usuario"
 fi
-echo "  Nota: IN/OUT directas requieren CAP_SYS_RAWIO; por eso LowMonitor"
-echo "  reporta [DENEGADO] como usuario normal. El kernel confirma aqui que"
-echo "  esos puertos existen y estan reservados a controladores."
+echo "  Conclusion: IN/OUT directas requieren CAP_SYS_RAWIO; por eso"
+echo "  LowMonitor reporta [DENEGADO] como usuario normal. Coherente con"
+echo "  que el kernel reserve y proteja estos puertos."
 
 # ==========================================================
 # Modulo 3 - Diagnostico de memoria
