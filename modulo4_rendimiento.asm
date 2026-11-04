@@ -1,43 +1,20 @@
 ; ==========================================================
-; modulo4_rendimiento.asm
-; Modulo 4: Monitor de rendimiento del CPU
-;   Mide con precision usando el Timestamp Counter (RDTSC):
-;     - Frecuencia del TSC (GHz)
-;     - Ciclos totales de un bloque de trabajo conocido
-;     - CPI promedio (ciclos por instruccion)
-;     - IPC (instrucciones por ciclo)
+; modulo4_rendimiento.asm - Modulo 4: Monitor de rendimiento del CPU
+;   Con RDTSC (serializado con CPUID) mide la frecuencia del TSC
+;   (ciclos en 100 ms de nanosleep) y los ciclos de un bucle de
+;   ITERS x 5 instrucciones. CPI = ciclos / instrucciones; IPC es su
+;   inverso.
 ;
-; Expone la rutina 'modulo4_rendimiento', llamada desde main.asm.
-; Depende de print_string, print_uint y print_fixed2 (utils.asm).
-;
-; Metodo:
-;   1. RDTSC se serializa con CPUID (barrera) para que las lecturas
-;      no se reordenen alrededor del bloque medido.
-;   2. La frecuencia del TSC se estima leyendo RDTSC antes y despues
-;      de dormir un intervalo real conocido (100 ms via nanosleep):
-;         Hz = (ciclos transcurridos) / (0.1 s)
-;   3. CPI/IPC: se ejecuta un bucle con un numero EXACTO y conocido
-;      de instrucciones (lo conocemos porque escribimos el asm), se
-;      miden los ciclos y:
-;         CPI = ciclos_totales / instrucciones_ejecutadas
-;         IPC = instrucciones_ejecutadas / ciclos_totales
-;
-; Nota de honestidad tecnica: en CPUs modernas el TSC avanza a
-; frecuencia constante (invariante), que puede diferir de la
-; frecuencia instantanea del nucleo por turbo/escalado. El valor
-; reportado es la frecuencia del TSC, adecuada para medir tiempo.
-; Para IPC/CPI "de hardware" (instrucciones retiradas reales) se
-; necesitaria la PMU (perf_event_open); aqui el conteo de
-; instrucciones es exacto por construccion del bucle.
+;   El TSC es invariante: refleja la frecuencia del contador, no la
+;   instantanea del nucleo. El conteo de instrucciones es exacto por
+;   construccion del bucle (no usa la PMU).
 ; ==========================================================
 
 extern print_string
 extern print_uint
 extern print_fixed2
 
-; Trabajo medido: ITERS iteraciones. Cada iteracion del bucle
-; .trabajo ejecuta 5 instrucciones (add, add, add, dec, jnz), por
-; lo que el total de instrucciones es ITERS * 5.
+; Bucle medido: ITERS iteraciones x 5 instrucciones (add, add, add, dec, jnz).
 %define ITERS          100000000           ; 100 millones
 %define INSTR_POR_ITER 5
 
@@ -128,14 +105,7 @@ modulo4_rendimiento:
     call leer_tsc
     mov r14, rax            ; TSC inicial del trabajo
 
-    ; Bucle de trabajo: ITERS iteraciones.
-    ; Cuerpo por iteracion (instrucciones contadas):
-    ;   add r8, 1     (1)
-    ;   add r9, 1     (1)
-    ;   add r10, 1    (1)
-    ;   dec rcx       (1)
-    ;   jnz .trabajo  (1)
-    ; => 5 instrucciones por iteracion.
+    ; Bucle de trabajo: 5 instrucciones por iteracion (INSTR_POR_ITER)
     xor r8, r8
     xor r9, r9
     xor r10, r10

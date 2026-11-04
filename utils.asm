@@ -1,8 +1,5 @@
 ; ==========================================================
-; utils.asm
-; Rutinas auxiliares compartidas por todos los modulos.
-; Se exponen con 'global' para que main.asm y los modulos
-; las usen mediante 'extern'.
+; utils.asm - Rutinas compartidas: impresion de cadenas y numeros.
 ; ==========================================================
 
 section .text
@@ -46,13 +43,10 @@ print_string:
 ; ----------------------------------------------------------
 ; print_uint: imprime un entero de 64 bits SIN signo en decimal.
 ;   Entrada: RDI = valor a imprimir
-;   Metodo : se extraen los digitos por division sucesiva entre
-;            10 y se escriben de atras hacia adelante en un buffer
-;            fijo; al final se emiten con UN solo write.
-;   Importante: NO se hace ningun syscall dentro del bucle de
-;   extraccion, porque la instruccion syscall destruye RCX y R11;
-;   todo el syscall write ocurre una sola vez al final.
-;   Altera : RAX, RCX, RDX, RSI, RDI, R8, R9 (clobbers de syscall)
+;   Extrae los digitos por division entre 10 (de atras hacia adelante
+;   en un buffer) y los emite con un unico write: un syscall dentro
+;   del bucle destruiria RCX y R11.
+;   Altera : RAX, RCX, RDX, RSI, RDI, R9, R11
 ; ----------------------------------------------------------
 print_uint:
     mov rax, rdi            ; RAX = valor

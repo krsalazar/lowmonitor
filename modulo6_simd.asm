@@ -1,41 +1,13 @@
 ; ==========================================================
-; modulo6_simd.asm
-; Modulo 6: Operaciones SIMD (bonus)
-;   Demuestra operaciones vectoriales con AVX2 (registros YMM de
-;   256 bits = 8 floats de 32 bits en paralelo):
-;     - Suma vectorizada        (vaddps)
-;     - Multiplicacion          (vmulps)
-;     - Comparacion             (vcmpps)
-;   y mide un throughput aproximado en GFLOPS.
+; modulo6_simd.asm - Modulo 6: Operaciones SIMD (bonus)
+;   Operaciones AVX2 sobre registros YMM (8 floats de 32 bits):
+;   vaddps, vmulps y vcmpps. AVX2 se detecta con CPUID hoja 7 (EBX bit 5).
+;   Estima GFLOPS = FLOPs * freq / ciclos / 1e9 con RDTSC, usando la
+;   frecuencia del TSC medida con nanosleep (como en el Modulo 4).
 ;
-; Expone la rutina 'modulo6_simd', llamada desde main.asm.
-; Depende de print_string, print_uint y print_fixed2 (utils.asm).
-;
-; Deteccion: se consulta CPUID hoja 7 (EBX bit 5 = AVX2). Si no
-; esta disponible, el modulo informa y omite las operaciones YMM.
-;
-; GFLOPS: se ejecuta un bucle de operaciones de punto flotante
-; vectorizadas, se miden los ciclos con RDTSC y se estima el
-; tiempo usando la frecuencia del TSC (medida con nanosleep, igual
-; que en el Modulo 4):
-;     GFLOPS = FLOPs_totales / segundos / 1e9
-;     segundos = ciclos / frecuencia_Hz
-;
-; Nota de honestidad: el tiempo se deriva del TSC (frecuencia
-; constante), no de un reloj de pared de alta resolucion; el valor
-; de GFLOPS es una estimacion representativa, no una medida de
-; laboratorio.
-;
-; LIMITACION DE ENTORNO VIRTUALIZADO (medido): en la VM de prueba
-; cada grupo de 8 operaciones YMM tomo ~464 ciclos (bucle de 10M
-; iteraciones en ~4.6 mil millones de ciclos), frente a los ~2-4
-; ciclos esperados en hardware nativo. Esto es throttling/manejo
-; del estado AVX por el hipervisor: la CPU expone AVX2 via CPUID y
-; las instrucciones se EJECUTAN correctamente (de ahi los [OK]),
-; pero NO a velocidad nativa. Por eso el GFLOPS medido es bajo
-; (~0.1-0.3) en la VM; en hardware fisico se esperarian decenas de
-; GFLOPS. El modulo cumple el requisito (deteccion + operaciones
-; vectoriales reales con YMM); el valor numerico refleja el entorno.
+;   En una VM el hipervisor puede ejecutar AVX muy por debajo de la
+;   velocidad nativa (~464 ciclos por grupo de 8 operaciones YMM
+;   medidos), por lo que el GFLOPS refleja el entorno, no el hardware.
 ; ==========================================================
 
 extern print_string
@@ -176,13 +148,9 @@ modulo6_simd:
     imul r13, 10                ; r13 = frecuencia en Hz
 
     ; --- 7. Benchmark GFLOPS ---
-    ; Para medir el throughput real hay que evitar la cadena de
-    ; dependencias: si todas las operaciones escriben el mismo
-    ; registro, se serializan. Usamos 8 acumuladores YMM
-    ; independientes (ymm2..ymm9); el CPU superescalar puede
-    ; despachar varias por ciclo.
-    ; Cada iteracion: 8 vaddps + 8 vmulps = 16 instrucciones YMM,
-    ; cada una 8 floats => 16 * 8 = 128 FLOPs por iteracion.
+    ; 8 destinos YMM independientes (ymm2..ymm9), sin cadena de
+    ; dependencias, para saturar las unidades FP: 8 instrucciones x
+    ; 8 floats = 64 FLOPs por iteracion.
     vmovaps ymm0, [vec_a]
     vmovaps ymm1, [vec_b]
     vmovaps ymm2, [vec_a]
@@ -197,11 +165,8 @@ modulo6_simd:
     call leer_tsc_m6
     mov r14, rax                ; TSC inicial
 
-    ; Cada operacion lee los vectores de entrada fijos (ymm0, ymm1)
-    ; y escribe en un registro destino distinto. Asi los valores NO
-    ; se realimentan ni divergen a Inf/NaN (que dispararian asistencias
-    ; de microcodigo de cientos de ciclos y falsearian el benchmark),
-    ; y los 8 destinos son independientes para saturar las unidades FP.
+    ; Entradas fijas (ymm0, ymm1) y destinos distintos: los valores no
+    ; se realimentan, por lo que no divergen a Inf/NaN.
     mov rcx, ITERS_FLOP
 .bucle_flop:
     vaddps  ymm2, ymm0, ymm1
@@ -226,19 +191,8 @@ modulo6_simd:
     mul rcx
     mov r12, rax                ; r12 = FLOPs totales
 
-    ; GFLOPS = FLOPs / segundos / 1e9, con segundos = ciclos / freq
-    ;        = FLOPs * freq / ciclos / 1e9
-    ; GFLOPS*100 = FLOPs * freq * 100 / ciclos / 1e9
-    ; Para no perder precision ni desbordar:
-    ;   - GHz*100 = freq / 1e7   (freq ~1e9 -> ~100..400)
-    ;   - FLOPs/ciclos = ops por ciclo (entero pequeno, se pierde
-    ;     precision) -> en su lugar: (FLOPs * 100) / ciclos primero,
-    ;     luego * (freq/1e9). Pero freq/1e9 < 1 => perderia todo.
-    ; Mejor: GFLOPS*100 = (FLOPs/ciclos) * (freq*100/1e9)
-    ;   factor = freq*100/1e9 = freq/1e7  (ej: 1.05e9 -> 105)
-    ;   ops_por_ciclo_x? No. Hacemos todo en una division final:
-    ;   num = FLOPs * (freq/1e7)        ; freq/1e7 ~ 105
-    ;   GFLOPS*100 = num / ciclos
+    ; GFLOPS*100 = FLOPs * (freq/1e7) / ciclos, con freq/1e7 = GHz*100.
+    ; Se multiplica antes de dividir para no perder precision.
     mov rax, r13                ; freq_Hz
     xor rdx, rdx
     mov rcx, 10000000           ; 1e7
@@ -260,8 +214,7 @@ modulo6_simd:
     call print_string
 
 .fin:
-    ; Limpiar estado AVX para evitar penalizacion de transicion
-    ; AVX<->SSE en codigo posterior.
+    ; Evita la penalizacion de transicion AVX<->SSE
     vzeroupper
 
     mov rdi, msg_salto

@@ -1,44 +1,16 @@
 ; ==========================================================
-; modulo5_jerarquia.asm
-; Modulo 5: Gestion jerarquica de memoria
-;   Mide la latencia de acceso (en ciclos) de cada nivel de la
-;   jerarquia de memoria: registros, L1, L2, L3 y RAM principal.
+; modulo5_jerarquia.asm - Modulo 5: Gestion jerarquica de memoria
+;   Latencia (ciclos/acceso) de registros, L1, L2, L3 y RAM por
+;   pointer chasing: cada nodo ocupa una linea de cache (64 B) y apunta
+;   al siguiente, por lo que cada acceso depende del anterior.
 ;
-; Expone la rutina 'modulo5_jerarquia', llamada desde main.asm.
-; Depende de print_string y print_fixed2 (utils.asm).
+;   Para derrotar al prefetcher los nodos se enlazan en una permutacion
+;   idx(k) = (k * PASO) mod N, con N potencia de 2 y PASO impar (coprimo
+;   con N): un unico ciclo que recorre todos los nodos en orden disperso.
 ;
-; Metodo (pointer chasing con recorrido permutado):
-;   Para medir un nivel se recorre una cadena ciclica de punteros
-;   alojada en un buffer del tamano de ese nivel. Cada nodo ocupa
-;   una linea de cache (64 B) y guarda la DIRECCION del siguiente.
-;   Como cada acceso depende del valor leido en el anterior, el CPU
-;   no puede paralelizarlos: se expone la latencia real del nivel.
-;
-;   Clave para derrotar al prefetcher (mejor practica de lmbench):
-;   los nodos NO se enlazan en orden fisico (0,1,2,...), que el
-;   prefetcher de hardware detectaria y precargaria, falseando la
-;   medicion. En su lugar se enlazan segun una PERMUTACION:
-;       siguiente_indice = (indice + PASO) mod N
-;   con N = numero de nodos (potencia de 2, pues los tamanos lo son)
-;   y PASO impar. Al ser PASO coprimo con una potencia de 2, la
-;   secuencia visita los N nodos exactamente una vez y cierra el
-;   ciclo: un unico recorrido disperso e impredecible. Ademas PASO
-;   abarca varias lineas (> 1), evitando tambien el prefetch de
-;   stride. El resultado es que cada acceso es un fallo real en el
-;   nivel medido.
-;
-;   latencia_ciclos = (TSC_fin - TSC_ini) / numero_de_accesos
-;   El TSC se serializa con CPUID antes de leerlo.
-;
-; Tamanos (segun lscpu de la maquina objetivo, Skylake):
-;   L1d = 32 KB  -> buffer 16 KB  (cabe holgado en L1)
-;   L2  = 4 MB   -> buffer 256 KB (excede L1, cabe en L2)
-;   L3  = 16 MB  -> buffer 8 MB   (excede L2, cabe en L3)
-;   RAM          -> buffer 64 MB  (excede L3, va a RAM)
-;
-; Nota: los resultados son aproximados y dependen de la carga y de
-; la virtualizacion; el objetivo es mostrar la PROGRESION de
-; latencias (registros < L1 < L2 < L3 < RAM).
+;   Buffers (lscpu, Skylake): L1 16 KB (L1d 32 KB), L2 256 KB (4 MB),
+;   L3 8 MB (16 MB), RAM 64 MB. Los valores absolutos dependen del
+;   entorno; lo que se muestra es la progresion L1 < L2 < L3 < RAM.
 ; ==========================================================
 
 extern print_string
@@ -46,10 +18,8 @@ extern print_fixed2
 
 %define STRIDE   64                ; tamano de linea de cache (bytes)
 %define ACCESOS  2000000           ; accesos por medicion
-; PASO de la permutacion (en numero de nodos). Impar => coprimo con
-; cualquier N potencia de 2, por lo que (i*PASO mod N) recorre todos
-; los nodos. Grande y no trivial para saltar varias lineas y evitar
-; el prefetch de stride. Primo elegido empiricamente.
+; PASO (en nodos): impar, por lo que es coprimo con N (potencia de 2);
+; mayor que una linea para evitar el prefetch de stride.
 %define PASO     2039
 
 %define SZ_L1    16384             ; 16 KB

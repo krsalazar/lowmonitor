@@ -180,6 +180,7 @@ lowmonitor/
 ├── utils.asm               Rutinas compartidas (print_string, print_uint, print_fixed2)
 ├── Makefile                Build y targets auxiliares
 ├── validar.sh              Validación cruzada contra herramientas del sistema
+├── docs/                   Reporte técnico (PDF y fuente en Markdown)
 └── README.md
 ```
 

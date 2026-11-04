@@ -1,13 +1,6 @@
 ; ==========================================================
-; main.asm
-; Punto de entrada del proyecto LowMonitor.
-; Llama a cada modulo en orden y termina el proceso.
-;
-; Los modulos y utilidades viven en archivos separados y se
-; enlazan juntos mediante el Makefile:
-;   utils.asm           -> print_string, strlen
-;   modulo1_cpu.asm     -> modulo1_cpu
-;   modulo2_ioports.asm -> modulo2_ioports
+; main.asm - Punto de entrada: ejecuta los modulos en orden y
+; termina el proceso.
 ; ==========================================================
 
 extern modulo1_cpu

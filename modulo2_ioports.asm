@@ -1,37 +1,15 @@
 ; ==========================================================
-; modulo2_ioports.asm
-; Modulo 2: Monitor de puertos E/S
-;   Lee puertos estandar del sistema (teclado 60h, panel 61h,
-;   serial COM1 3F8h) y demuestra las instrucciones IN/OUT en
-;   los tres anchos (8, 16 y 32 bits).
-; Expone la rutina 'modulo2_ioports', llamada desde main.asm.
-; Depende de print_string y print_uint (utils.asm).
+; modulo2_ioports.asm - Modulo 2: Monitor de puertos E/S
+;   IN/OUT en 8/16/32 bits (puerto en DX, rango 0-65535) sobre los
+;   puertos 60h, 61h y 3F8h (lectura) y 80h (escritura, puerto POST).
 ;
-; Ejecucion como usuario regular (sin root):
-;   1. Se pide acceso con ioperm. Solo se concede si el proceso
-;      tiene CAP_SYS_RAWIO (root o binario con setcap).
-;   2. Se instala un manejador de SIGSEGV con rt_sigaction.
-;   3. Las instrucciones IN/OUT se ejecutan SIEMPRE. Si el proceso
-;      no tiene permiso, el CPU las bloquea con una excepcion de
-;      proteccion general (#GP, vector 13) y el kernel la entrega
-;      como SIGSEGV. El manejador anota el vector, marca la
-;      operacion como fallida y mueve RIP (en el ucontext) a una
-;      direccion de recuperacion para continuar con la siguiente.
-;   4. Al terminar se restaura el manejador por defecto, para que
-;      un fallo real en otro modulo termine el proceso como siempre.
+;   Corre como usuario regular. ioperm solo se concede con
+;   CAP_SYS_RAWIO; sin ella, IN/OUT provocan #GP (vector 13), que el
+;   kernel entrega como SIGSEGV. Un manejador (rt_sigaction) marca la
+;   operacion como fallida y reanuda tras la instruccion. Al terminar
+;   se restaura SIGSEGV por defecto.
 ;
-; Direccionamiento: todas las operaciones usan DX como puerto,
-; la forma general que cubre el espacio completo 0-65535.
-;
-; Verificacion de estado despues de cada operacion:
-;   - Excepcion capturada        -> [DENEGADO] + vector del CPU
-;   - IN con valor != 0xFF       -> [OK]  (el puerto respondio)
-;   - IN con valor == 0xFF       -> [--]  (bus flotante, sin respuesta)
-;   - OUT sin excepcion          -> [OK]
-;
-; Seguridad: la escritura (OUT) se hace sobre el puerto de
-; diagnostico POST 0x80, de uso tradicional como "basurero" de
-; E/S en Linux; no controla hardware critico.
+;   Estado: [OK] | [--] (IN leyo 0xFF, bus flotante) | [DENEGADO] + vector.
 ; ==========================================================
 
 extern print_string
@@ -53,12 +31,10 @@ extern print_uint
 %define UC_TRAPNO         200
 
 ; ----------------------------------------------------------
-; IO_PROTEGIDA instruccion
-;   Ejecuta una instruccion IN/OUT con recuperacion ante #GP.
-;   Limpia la bandera de fallo, registra la direccion a la que el
-;   manejador debe saltar si la instruccion falla, ejecuta la
-;   instruccion y desarma la recuperacion.
-;   Usa R11 (no hay syscall entre su carga y su uso).
+; IO_PROTEGIDA instruccion: ejecuta un IN/OUT con recuperacion ante #GP.
+;   Arma recover_rip (punto de reanudacion de segv_handler) y lo
+;   desarma al terminar. R11 es seguro: no hay syscall entre su carga
+;   y su uso.
 ; ----------------------------------------------------------
 %macro IO_PROTEGIDA 1+
     mov byte [fault_flag], 0
@@ -124,12 +100,10 @@ section .text
     global modulo2_ioports
 
 ; ----------------------------------------------------------
-; segv_handler (SA_SIGINFO): RDI=signo, RSI=siginfo*, RDX=ucontext*
-;   Si hay una operacion de E/S armada, guarda el vector de la
-;   excepcion, marca el fallo y redirige RIP a la recuperacion.
-;   Si no hay ninguna armada, el fallo no es de este modulo:
-;   restaura SIG_DFL y retorna, de modo que la instruccion vuelve
-;   a fallar y el proceso termina con SIGSEGV como de costumbre.
+; segv_handler (SA_SIGINFO): RDX = ucontext*
+;   Con una operacion armada: guarda el vector, marca el fallo y
+;   redirige RIP. Sin ninguna armada el fallo no es de este modulo:
+;   restaura SIG_DFL y retorna para que el proceso termine normalmente.
 ; ----------------------------------------------------------
 segv_handler:
     mov rax, [recover_rip]
@@ -162,9 +136,7 @@ restaurar_sigsegv:
     ret
 
 ; ----------------------------------------------------------
-; print_estado_lectura
-;   Imprime [OK] si el valor leido != 0xFF, o [--] si == 0xFF.
-;   Entrada: AL = byte menos significativo del valor leido.
+; print_estado_lectura: [OK] si AL != 0xFF, [--] si AL == 0xFF.
 ; ----------------------------------------------------------
 print_estado_lectura:
     cmp al, 0xFF
@@ -241,7 +213,7 @@ modulo2_ioports:
     test rax, rax
     js .sin_manejador
 
-    ; --- 3. Lecturas de los puertos del enunciado (8 bits) ---
+    ; --- 3. Lecturas de puertos (8 bits) ---
     mov rdi, lbl_p60
     call print_string
     xor eax, eax
