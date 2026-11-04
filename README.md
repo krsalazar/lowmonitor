@@ -212,6 +212,30 @@ enlazador une todos los objetos en un solo binario.
 
 ---
 
+## Validación cruzada
+
+El script `validar.sh` contrasta lo que reporta LowMonitor contra
+herramientas nativas de Linux, módulo por módulo, para demostrar que los
+resultados son verídicos:
+
+```bash
+./validar.sh
+```
+
+| Módulo | Se compara contra |
+|---|---|
+| 1 CPU | `lscpu`, `/proc/cpuinfo` (nombre y extensiones SIMD) |
+| 2 Puertos | `/proc/ioports` (mapa de puertos del kernel) |
+| 3 Memoria | `free`, `/proc/meminfo` (RAM total) |
+| 4 Rendimiento | `/proc/cpuinfo` (frecuencia); `perf` si está instalado (IPC) |
+| 5 Jerarquía | `lscpu`, `/sys/.../cache` (tamaños de caché) |
+| 6 SIMD | `/proc/cpuinfo` (soporte AVX2) |
+
+No requiere root. Muestra, lado a lado, el valor de LowMonitor y el de la
+fuente oficial del sistema para que la coincidencia sea evidente.
+
+---
+
 ## Notas sobre el entorno de prueba
 
 El proyecto fue desarrollado y validado en una máquina con Linux Debian
